@@ -1,0 +1,36 @@
+ 
+name: Deploy Spring Boot to EC2
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build with Maven
+      run: mvn clean package -DskipTests
+
+    - name: Decode SSH key
+      run: |
+        echo "${{ secrets.EC2_SSH_KEY }}" | base64 -d > key.pem
+        chmod 400 key.pem
+
+    - name: Copy JAR to EC2
+      run: |
+        scp -o StrictHostKeyChecking=no -i key.pem target/*.jar ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/app.jar
+
+    - name: Run JAR on EC2
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "pkill -f 'java' || true && nohup java -jar /home/${{ secrets.EC2_USER }}/app.jar > app.log 2>&1 &"
